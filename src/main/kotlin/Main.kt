@@ -47,7 +47,17 @@ val workBook = XSSFWorkbook()
 val style = workBook.createCellStyle()!!
 
 fun main(args: Array<String>) {
-    val data = json.decodeFromString<Data>(File(args[0]).readLines().joinToString("\n"))
+    var fileName = if (args.isNotEmpty()) args[0] else ""
+    while (!File(fileName).exists()) {
+        print("Podaj lokalizację pliku:")
+        try {
+            fileName = readLine()!!.replace("\"","")
+        } catch (e: Exception) {
+
+        }
+    }
+    val inputFile = File(fileName)
+    val data = json.decodeFromString<Data>(inputFile.readLines().joinToString("\n"))
     val sheet = workBook.createSheet("wyniki")!!
     style.alignment = HorizontalAlignment.CENTER
     val headers = arrayOf("Imię", "Nazwisko", "Klasa", "Wynik", "% Punktów", "Czas w sekundach", "Data ukończenia", "Czas ukończenia", "Czas aplikacji w tle", "Licznik chowania w tło", "Poziom API", "Nazwa urządzenia", "Wersja aplikacji")
@@ -76,10 +86,10 @@ fun main(args: Array<String>) {
     }
     ProcessBuilder("cmd.exe", "/C taskkill /IM EXCEL.exe /F").start()
     Thread.sleep(1000L)
-    val file = File("wyniki.xlsx")
-    val fileOutputStream = FileOutputStream(file)
+    val outputFile = File("wyniki.xlsx")
+    val fileOutputStream = FileOutputStream(outputFile)
     workBook.write(fileOutputStream)
     fileOutputStream.close()
-    println(file.absolutePath)
-    ProcessBuilder("cmd.exe", "/C start excel \"" + file.absolutePath + "\"").start()
+    println(outputFile.absolutePath)
+    ProcessBuilder("cmd.exe", "/C start excel \"" + outputFile.absolutePath + "\"").start()
 }
