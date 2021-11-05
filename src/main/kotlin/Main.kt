@@ -1,14 +1,28 @@
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import org.apache.poi.ss.usermodel.HorizontalAlignment
-import org.apache.poi.xssf.usermodel.*
 import java.io.File
-import java.io.FileOutputStream
-import java.time.LocalDateTime
 
 @Serializable
-class Data(val Results: Map<String, Result>)
+class Data(@SerialName("META") var meta: Meta, val Results: Map<String, Result>)
+
+@Serializable
+class Meta(
+	@SerialName("Questions") val questions: Array<Question>,
+	@Serializable
+	val availableQuestions: Int = questions.size,
+	@Serializable
+	val isActive: Boolean = true,
+	@Serializable
+	val questionsVersion: Int = 1,
+	@Serializable
+	val wantedQuestions: Int = 20
+)
+
+@Serializable
+class Question(val q: String, val a: String, val b: String, val c: String, val d: String)
 
 @Serializable
 class Result(val endTime: DateTime, val percent: Int, val score: Int, val serviceInfo: ServiceInfo, val studentClass: String? = null, val totalSeconds: Int, val timeInBackground: String? = null, val timesInBackground: Int? = null)
@@ -19,77 +33,86 @@ class DateTime(val date: String, val time: String)
 @Serializable
 class ServiceInfo(val apiLevel: Int, val deviceName: String, /*val questions: String,*/ val versionCode: Int)
 
-fun XSSFSheet.nextRow() = this.createRow(this.lastRowNum + 1)!!
-fun XSSFRow.nextCell() = this.createCell((if (lastCellNum == (-1).toShort()) 0 else lastCellNum).toInt())!!
-fun XSSFRow.setNextCell(value: Any) {
-    val cell = nextCell()
-    when (value) {
-        is String -> cell.setCellValue(value)
-        is Number -> cell.setCellValue(value.toDouble())
-        is LocalDateTime -> cell.setCellValue(value)
-        else -> throw IllegalArgumentException("Arguments of type " + value.javaClass.canonicalName + " are not supported")
-    }
-    cell.cellStyle = style
+private val json = Json {
+	ignoreUnknownKeys = true
+	encodeDefaults = true
 }
-
-fun XSSFRow.addCells(vararg cells: Any?) = cells.forEach {
-    if (it == null) {
-        setNextCell("-")
-    } else {
-        setNextCell(it)
-    }
-}
-
-private val json = Json { ignoreUnknownKeys = true }
-
-val workBook = XSSFWorkbook()
-
-val style = workBook.createCellStyle()!!
 
 fun main(args: Array<String>) {
-    var fileName = if (args.isNotEmpty()) args[0] else ""
-    while (!File(fileName).exists()) {
-        print("Podaj lokalizację pliku:")
-        try {
-            fileName = readLine()!!.replace("\"","")
-        } catch (e: Exception) {
+	var fileName = if (args.isNotEmpty()) args[0] else ""
+	while (!File(fileName).exists()) {
+		print("Podaj lokalizację pliku wejściowego:")
+		try {
+			fileName = readLine()!!.replace("\"", "")
+		} catch (e: Exception) {
 
-        }
-    }
-    val inputFile = File(fileName)
-    val data = json.decodeFromString<Data>(inputFile.readLines().joinToString("\n"))
-    val sheet = workBook.createSheet("wyniki")!!
-    style.alignment = HorizontalAlignment.CENTER
-    val headers = arrayOf("Imię", "Nazwisko", "Klasa", "Wynik", "% Punktów", "Czas w sekundach", "Data ukończenia", "Czas ukończenia", "Czas aplikacji w tle", "Licznik chowania w tło", "Poziom API", "Nazwa urządzenia", "Wersja aplikacji")
-    sheet.nextRow().addCells(*headers)
-    for (i in headers.indices) {
-        sheet.setColumnWidth(i, 25 * 256)
-    }
-    data.Results.forEach { (key, value) ->
-        value.run {
-            sheet.nextRow().addCells(
-                key.split(" ")[0],
-                key.split(" ")[1],
-                studentClass,
-                score,
-                percent,
-                totalSeconds,
-                endTime.date,
-                endTime.time,
-                timeInBackground,
-                timesInBackground,
-                serviceInfo.apiLevel,
-                serviceInfo.deviceName,
-                serviceInfo.versionCode
-            )
-        }
-    }
-    ProcessBuilder("cmd.exe", "/C taskkill /IM EXCEL.exe /F").start()
-    Thread.sleep(1000L)
-    val outputFile = File("wyniki.xlsx")
-    val fileOutputStream = FileOutputStream(outputFile)
-    workBook.write(fileOutputStream)
-    fileOutputStream.close()
-    println(outputFile.absolutePath)
-    ProcessBuilder("cmd.exe", "/C start excel \"" + outputFile.absolutePath + "\"").start()
+		}
+	}
+	val inputFile = File(fileName)
+	when (inputFile.absolutePath.split(".").last()) {
+		"json" -> {
+			val data = json.decodeFromString<Data>(inputFile.readLines().joinToString("\n"))
+			val output = mutableListOf(arrayOf("Imię", "Nazwisko", "Klasa", "Wynik", "% Punktów", "Czas w sekundach", "Data ukończenia", "Czas ukończenia", "Czas aplikacji w tle", "Licznik chowania w tło", "Poziom API", "Nazwa urządzenia", "Wersja aplikacji").joinToString(";"))
+			data.Results.forEach { (key, value) ->
+				value.run {
+					output += arrayOf(
+						key.split(" ")[0],
+						key.split(" ")[1],
+						studentClass,
+						score,
+						percent,
+						totalSeconds,
+						endTime.date,
+						endTime.time,
+						timeInBackground,
+						timesInBackground,
+						serviceInfo.apiLevel,
+						serviceInfo.deviceName,
+						serviceInfo.versionCode
+					).map { it ?: "-" }.joinToString(";")
+				}
+			}
+			ProcessBuilder("cmd.exe", "/C taskkill /IM EXCEL.exe /F")
+				.start()
+			Thread.sleep(1000L)
+			val outputFile = File("wyniki.csv")
+			outputFile.writeText(output.joinToString("\n"))
+			println(outputFile.absolutePath)
+			ProcessBuilder("cmd.exe", "/C start excel \"" + outputFile.absolutePath + "\"")
+				.start()
+		}
+		"csv" -> {
+			fun input(text: String): Int {
+				while (true) {
+					print(text)
+					try {
+						return readLine()!!.toInt()
+					} catch (e: Exception) {
+					}
+				}
+			}
+			val version = input("Podaj wersję pytań: ")
+			val wantedQuestions = input("Podaj ilość pytań która ma być zadana podczas quizu: ")
+			val data = Data(
+				Meta(
+					inputFile.readLines().drop(1).map {
+						val split = it.split(";")
+						Question(
+							split[0],
+							split[1],
+							split[2],
+							split[3],
+							split[4]
+						)
+					}.toTypedArray(),
+					questionsVersion = version,
+					wantedQuestions = wantedQuestions
+				),
+				emptyMap()
+			)
+			val outputFile = File("quiz.json")
+			outputFile.writeText(json.encodeToString(data))
+			println(outputFile.absolutePath)
+		}
+	}
 }
