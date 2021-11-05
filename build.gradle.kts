@@ -14,13 +14,24 @@ repositories {
 }
 
 dependencies{
-    implementation("org.apache.poi:poi:5.0.0")
-    implementation("org.apache.poi:poi-ooxml:5.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.0")
 }
 
-tasks.withType<KotlinCompile>() {
-    kotlinOptions.jvmTarget = "10"
+tasks.withType<Jar> {
+    manifest { attributes["Main-Class"] = application.mainClass }
+
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    configurations["compileClasspath"].forEach { file: File -> from(zipTree(file.absoluteFile)) }
+}
+
+tasks.withType<KotlinCompile> { kotlinOptions.jvmTarget = "1.8" }
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 application {
